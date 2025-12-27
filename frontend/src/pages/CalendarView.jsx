@@ -1,14 +1,22 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Plus, Wrench, Clock, User, AlertCircle } from 'lucide-react'
-import { mockRequests, getEquipmentById, mockEquipment, mockTeams, mockUsers } from '../data/mockData'
+import { ChevronLeft, ChevronRight, X, Plus, Wrench, Clock, User, AlertCircle, MapPin, Calendar, FileText, Loader2 } from 'lucide-react'
+import { useRequests, useEquipment, useTeams, useUsers } from '../hooks/useData'
+import { requestAPI } from '../services/api'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, setHours, setMinutes } from 'date-fns'
 
 const CalendarView = () => {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [requests, setRequests] = useState(mockRequests)
+  const [selectedRequest, setSelectedRequest] = useState(null)
+  const [selectedEquipment, setSelectedEquipment] = useState(null)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  
+  const { requests, loading: requestsLoading, error: requestsError, refetch } = useRequests()
+  const { equipment, loading: equipmentLoading } = useEquipment()
+  const { teams } = useTeams()
+  const { users } = useUsers()
   
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
@@ -24,33 +32,49 @@ const CalendarView = () => {
     })
   }
 
-  const handleDateClick = (date) => {
+  const handleDateClick = (date, event) => {
+    // Check if clicking on a request item
+    const clickedElement = event.target.closest('[data-request-id]')
+    if (clickedElement) {
+      const requestId = clickedElement.getAttribute('data-request-id')
+      const request = preventiveRequests.find(r => (r._id || r.id) === requestId)
+      if (request) {
+        setSelectedRequest(request)
+        setIsDetailsModalOpen(true)
+        return
+      }
+    }
+    
+    // Check if clicking on equipment
+    const equipmentElement = event.target.closest('[data-equipment-id]')
+    if (equipmentElement) {
+      const equipmentId = equipmentElement.getAttribute('data-equipment-id')
+      const eq = equipment.find(e => (e._id || e.id) === equipmentId)
+      if (eq) {
+        setSelectedEquipment(eq)
+        setIsDetailsModalOpen(true)
+        return
+      }
+    }
+
+    // Otherwise, open add request modal
     setSelectedDate(date)
     setIsModalOpen(true)
   }
 
-  const handleAddCorrectiveMaintenance = (formData) => {
-    // Create new corrective maintenance request
-    const newRequest = {
-      id: String(Date.now()),
-      subject: formData.subject,
-      description: formData.description,
-      createdFrom: '1', // TODO: Get from auth context
-      equipment: formData.equipment,
-      requestedAt: new Date().toISOString(),
-      type: 'Corrective',
-      team: formData.team,
-      technician: formData.technician,
-      scheduledAt: formData.scheduledAt,
-      duration: formData.duration,
-      priority: formData.priority,
-      status: 'New',
-      createdAt: new Date().toISOString(),
+  const handleAddCorrectiveMaintenance = async (formData) => {
+    try {
+      const response = await requestAPI.create(formData)
+      if (response.success) {
+        refetch()
+        setIsModalOpen(false)
+        setSelectedDate(null)
+      } else {
+        alert(response.message || 'Failed to create request')
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to create request')
     }
-
-    setRequests((prev) => [...prev, newRequest])
-    setIsModalOpen(false)
-    setSelectedDate(null)
   }
 
   const goToPreviousMonth = () => {
@@ -65,13 +89,21 @@ const CalendarView = () => {
   const firstDayOfWeek = monthStart.getDay()
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+  if (requestsLoading || equipmentLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Calendar View</h1>
-          <p className="text-gray-600 dark:text-gray-400">Preventive maintenance schedule - Click any date to add corrective maintenance</p>
+          <p className="text-gray-600 dark:text-gray-400">Preventive maintenance schedule - Click request to view details, or click empty date to add corrective maintenance</p>
         </div>
       </div>
 
@@ -123,7 +155,7 @@ const CalendarView = () => {
                 key={day.toISOString()}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                onClick={() => handleDateClick(day)}
+                onClick={(e) => handleDateClick(day, e)}
                 className={`aspect-square border border-gray-200 dark:border-gray-700 rounded-lg p-2 cursor-pointer transition-all ${
                   isToday 
                     ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700' 
@@ -148,14 +180,24 @@ const CalendarView = () => {
                 </div>
                 <div className="space-y-1 overflow-y-auto max-h-[60px] scrollbar-hide">
                   {dayRequests.slice(0, 3).map((req) => {
-                    const equipment = getEquipmentById(req.equipment)
+                    const equipmentObj = typeof req.equipment === 'object' ? req.equipment : equipment.find(eq => (eq._id || eq.id) === req.equipment)
+                    const requestId = req._id || req.id
+                    const equipmentId = equipmentObj?._id || equipmentObj?.id
+                    
                     return (
                       <div
-                        key={req.id}
-                        className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded truncate"
-                        title={`${equipment?.name || 'Unknown'} - ${req.subject}`}
+                        key={requestId}
+                        data-request-id={requestId}
+                        data-equipment-id={equipmentId}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedRequest(req)
+                          setIsDetailsModalOpen(true)
+                        }}
+                        className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded truncate cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                        title={`${equipmentObj?.name || 'Unknown'} - ${req.subject}`}
                       >
-                        {equipment?.name || req.subject}
+                        {equipmentObj?.name || req.subject}
                       </div>
                     )
                   })}
@@ -184,12 +226,12 @@ const CalendarView = () => {
             <span className="text-sm text-gray-600 dark:text-gray-400">Today</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-100 dark:bg-blue-900/30 rounded"></div>
-            <span className="text-sm text-gray-600 dark:text-gray-400">Preventive Maintenance</span>
+            <div className="w-4 h-4 bg-purple-100 dark:bg-purple-900/30 rounded"></div>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Preventive Maintenance (Click to view details)</span>
           </div>
           <div className="flex items-center gap-2">
             <Plus className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-            <span className="text-sm text-gray-600 dark:text-gray-400">Click date to add corrective maintenance</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">Click empty date to add corrective maintenance</span>
           </div>
         </div>
       </div>
@@ -204,6 +246,27 @@ const CalendarView = () => {
               setSelectedDate(null)
             }}
             onSave={handleAddCorrectiveMaintenance}
+            equipment={equipment}
+            teams={teams}
+            users={users}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Request/Equipment Details Modal */}
+      <AnimatePresence>
+        {isDetailsModalOpen && (selectedRequest || selectedEquipment) && (
+          <DetailsModal
+            request={selectedRequest}
+            equipment={selectedEquipment}
+            allEquipment={equipment}
+            teams={teams}
+            users={users}
+            onClose={() => {
+              setIsDetailsModalOpen(false)
+              setSelectedRequest(null)
+              setSelectedEquipment(null)
+            }}
           />
         )}
       </AnimatePresence>
@@ -211,33 +274,46 @@ const CalendarView = () => {
   )
 }
 
-const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave }) => {
+const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave, equipment, teams, users }) => {
   const [formData, setFormData] = useState({
     subject: '',
     description: '',
     equipment: '',
+    type: 'Corrective',
     team: '',
     technician: '',
     scheduledAt: format(setHours(setMinutes(selectedDate, 0), 9), "yyyy-MM-dd'T'HH:mm"),
     duration: 60,
     priority: 'Medium',
   })
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e) => {
+  const technicians = users.filter(user => user.role === 'Technician' || user.role === 'Manager')
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!formData.subject || !formData.equipment || !formData.team || !formData.technician) {
+    if (!formData.subject || !formData.description || !formData.equipment || !formData.team || !formData.technician) {
       alert('Please fill in all required fields')
       return
     }
-    onSave(formData)
+
+    setLoading(true)
+    try {
+      await onSave(formData)
+    } catch (err) {
+      alert(err.message || 'Failed to save request')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
+        onClick={(e) => e.stopPropagation()}
         className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
       >
         {/* Modal Header */}
@@ -302,9 +378,9 @@ const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave }) => {
               className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none cursor-pointer"
             >
               <option value="">Select equipment</option>
-              {mockEquipment.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name} - {eq.location}
+              {equipment.map((eq) => (
+                <option key={eq._id || eq.id} value={eq._id || eq.id}>
+                  {eq.name} {eq.serialNumber ? `- ${eq.serialNumber}` : ''}
                 </option>
               ))}
             </select>
@@ -322,8 +398,8 @@ const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave }) => {
               className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none cursor-pointer"
             >
               <option value="">Select team</option>
-              {mockTeams.map((team) => (
-                <option key={team.id} value={team.id}>
+              {teams.map((team) => (
+                <option key={team._id || team.id} value={team._id || team.id}>
                   {team.teamName}
                 </option>
               ))}
@@ -342,13 +418,11 @@ const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave }) => {
               className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none cursor-pointer"
             >
               <option value="">Select technician</option>
-              {mockUsers
-                .filter((user) => user.role === 'Technician')
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
+              {technicians.map((user) => (
+                <option key={user._id || user.id} value={user._id || user.id}>
+                  {user.name} ({user.role})
+                </option>
+              ))}
             </select>
           </div>
 
@@ -413,15 +487,384 @@ const AddCorrectiveMaintenanceModal = ({ selectedDate, onClose, onSave }) => {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors font-medium"
+              disabled={loading}
+              className="px-4 py-2 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Add Maintenance Request
+              {loading ? 'Creating...' : 'Add Maintenance Request'}
             </button>
           </div>
         </form>
       </motion.div>
     </div>
   )
+}
+
+const DetailsModal = ({ request, equipment, allEquipment, teams, users, onClose }) => {
+  if (request) {
+    const equipmentObj = typeof request.equipment === 'object' ? request.equipment : allEquipment.find(eq => (eq._id || eq.id) === request.equipment)
+    const technician = typeof request.technician === 'object' ? request.technician : users.find(u => (u._id || u.id) === request.technician)
+    const team = typeof request.team === 'object' ? request.team : teams.find(t => (t._id || t.id) === request.team)
+    const requester = typeof request.createdFrom === 'object' ? request.createdFrom : users.find(u => (u._id || u.id) === request.createdFrom)
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                Request Details
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {request.type} Maintenance
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="p-6 space-y-6">
+            {/* Subject */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Subject
+              </label>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {request.subject}
+              </p>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Description
+              </label>
+              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                {request.description}
+              </p>
+            </div>
+
+            {/* Equipment */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Equipment
+              </label>
+              <div className="flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-gray-400" />
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {equipmentObj?.name || 'Unknown'}
+                </span>
+                {equipmentObj?.serialNumber && (
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    ({equipmentObj.serialNumber})
+                  </span>
+                )}
+              </div>
+              {equipmentObj?.location && (
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <MapPin className="w-3 h-3 text-gray-400" />
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {equipmentObj.location}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Grid: Status, Priority, Type */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Status
+                </label>
+                <span
+                  className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    request.status === 'New'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : request.status === 'In Progress'
+                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                      : request.status === 'Repaired'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  {request.status}
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Priority
+                </label>
+                <span
+                  className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    request.priority === 'High'
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                      : request.priority === 'Medium'
+                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                      : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  }`}
+                >
+                  {request.priority}
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Type
+                </label>
+                <span
+                  className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    request.type === 'Preventive'
+                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                      : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                  }`}
+                >
+                  {request.type}
+                </span>
+              </div>
+            </div>
+
+            {/* Scheduled Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Scheduled Date & Time
+                </label>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {format(new Date(request.scheduledAt), 'MMM dd, yyyy • h:mm a')}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Duration
+                </label>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {request.duration} minutes
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Team & Technician */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Team
+                </label>
+                <span className="text-gray-900 dark:text-gray-100">
+                  {team?.teamName || 'Unassigned'}
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Technician
+                </label>
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {technician?.name || 'Unassigned'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Requested By */}
+            {requester && (
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Requested By
+                </label>
+                <span className="text-gray-900 dark:text-gray-100">
+                  {requester.name} ({requester.email})
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
+  if (equipment) {
+    const owner = typeof equipment.owner === 'object' ? equipment.owner : users.find(u => (u._id || u.id) === equipment.owner)
+    const assignedTeam = typeof equipment.assignedTo === 'object' ? equipment.assignedTo : teams.find(t => (t._id || t.id) === equipment.assignedTo)
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                Equipment Details
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Equipment Information
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            </button>
+          </div>
+
+          {/* Modal Body */}
+          <div className="p-6 space-y-6">
+            {/* Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Equipment Name
+              </label>
+              <div className="flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {equipment.name}
+                </p>
+              </div>
+            </div>
+
+            {/* Serial Number */}
+            {equipment.serialNumber && (
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Serial Number
+                </label>
+                <p className="text-gray-900 dark:text-gray-100 font-mono">
+                  {equipment.serialNumber}
+                </p>
+              </div>
+            )}
+
+            {/* Location */}
+            {equipment.location && (
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Location
+                </label>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {equipment.location}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Category */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Category
+              </label>
+              <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+                {equipment.category}
+              </span>
+            </div>
+
+            {/* Grid: Purchase Date, Warranty */}
+            <div className="grid grid-cols-2 gap-4">
+              {equipment.purchaseDate && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Purchase Date
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-900 dark:text-gray-100">
+                      {format(new Date(equipment.purchaseDate), 'MMM dd, yyyy')}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {equipment.warrantyExpiry && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Warranty Expiry
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-900 dark:text-gray-100">
+                      {format(new Date(equipment.warrantyExpiry), 'MMM dd, yyyy')}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Owner & Assigned Team */}
+            <div className="grid grid-cols-2 gap-4">
+              {owner && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Owner
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-900 dark:text-gray-100">
+                      {owner.name}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {assignedTeam && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Assigned Team
+                  </label>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {assignedTeam.teamName}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-primary-600 dark:bg-primary-500 text-white rounded-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors font-medium"
+            >
+              Close
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
+  return null
 }
 
 export default CalendarView
