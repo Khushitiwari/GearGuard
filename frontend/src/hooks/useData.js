@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { equipmentAPI, requestAPI, teamAPI } from '../services/api'
+import { equipmentAPI, requestAPI, teamAPI, userAPI } from '../services/api'
 
 // Hook for fetching equipment data
 export const useEquipment = () => {
@@ -148,5 +148,46 @@ export const useTeams = () => {
   }, [])
 
   return { teams, loading, error }
+}
+
+// Hook for fetching users data
+export const useUsers = () => {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true)
+        const response = await userAPI.getAll()
+        if (response.success) {
+          setUsers(response.users || [])
+        } else {
+          setError(response.message || 'Failed to fetch users')
+        }
+      } catch (err) {
+        let errorMessage = err.message || 'Failed to fetch users'
+        
+        if (err.name === 'NetworkError' || err.message.includes('Failed to connect')) {
+          errorMessage = 'Cannot connect to backend server. Please ensure:\n' +
+            '1. Backend is running on port 4000\n' +
+            '2. MongoDB is connected\n' +
+            '3. You are logged in'
+        } else if (err.message.includes('Authentication required')) {
+          errorMessage = 'Please login to view users'
+        }
+        
+        setError(errorMessage)
+        console.error('Error fetching users:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUsers()
+  }, [])
+
+  return { users, loading, error }
 }
 

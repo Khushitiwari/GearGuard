@@ -19,19 +19,38 @@ const apiRequest = async (endpoint, options = {}) => {
   try {
     const response = await fetch(url, config)
     
-    // Handle network errors (backend not running, CORS, etc.)
-    if (!response.ok) {
-      // Try to parse error message from response
-      let errorMessage = 'API request failed'
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.message || errorMessage
-      } catch (e) {
-        // If response is not JSON, use status text
-        errorMessage = response.statusText || `HTTP ${response.status}`
+    // Parse JSON response first
+    let data
+    try {
+      data = await response.json()
+    } catch (e) {
+      // If response is not JSON, handle HTTP errors
+      if (!response.ok) {
+        let errorMessage = response.statusText || `HTTP ${response.status}`
+        if (response.status === 401) {
+          errorMessage = 'Authentication required. Please login.'
+        } else if (response.status === 403) {
+          errorMessage = 'You do not have permission to perform this action.'
+        } else if (response.status === 404) {
+          errorMessage = 'Resource not found.'
+        } else if (response.status >= 500) {
+          errorMessage = 'Server error. Please try again later.'
+        }
+        throw new Error(errorMessage)
       }
-      
-      // Provide helpful error messages based on status code
+      // If response is not JSON but status is OK, return empty object
+      return {}
+    }
+    
+    // Backend returns { success: true/false, message: "...", ...data }
+    // Check for backend error format (success: false)
+    if (data.success === false) {
+      throw new Error(data.message || 'API request failed')
+    }
+    
+    // Handle HTTP errors (for non-JSON responses or actual HTTP errors)
+    if (!response.ok) {
+      let errorMessage = data.message || response.statusText || `HTTP ${response.status}`
       if (response.status === 401) {
         errorMessage = 'Authentication required. Please login.'
       } else if (response.status === 403) {
@@ -41,17 +60,7 @@ const apiRequest = async (endpoint, options = {}) => {
       } else if (response.status >= 500) {
         errorMessage = 'Server error. Please try again later.'
       }
-      
       throw new Error(errorMessage)
-    }
-    
-    // Parse JSON response
-    let data
-    try {
-      data = await response.json()
-    } catch (e) {
-      // If response is not JSON, return empty object
-      data = {}
     }
     
     return data
@@ -194,7 +203,11 @@ export const teamAPI = {
 
 // User API
 export const userAPI = {
-  // Add user-related API calls if needed
+  getAll: async () => {
+    return apiRequest('/users/get-all', {
+      method: 'GET',
+    })
+  },
 }
 
 // Test backend connection

@@ -111,4 +111,13 @@ const logout = async (req, res) => {
     }
 }
 
-export { register, login, logout }
+const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().select('-password -otp -otpExpiryAt');
+        return res.json({ success: true, users });
+    } catch (error) {
+        return res.json({ success: false, message: "Failed to fetch users!", error });
+    }
+}
+
+export { register, login, logout, getAllUsers }
