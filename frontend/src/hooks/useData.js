@@ -18,7 +18,20 @@ export const useEquipment = () => {
           setError(response.message || 'Failed to fetch equipment')
         }
       } catch (err) {
-        setError(err.message || 'Failed to fetch equipment')
+        // Provide more helpful error messages
+        let errorMessage = err.message || 'Failed to fetch equipment'
+        
+        // Check if it's a network error (backend not running)
+        if (err.name === 'NetworkError' || err.message.includes('Failed to connect')) {
+          errorMessage = 'Cannot connect to backend server. Please ensure:\n' +
+            '1. Backend is running on port 4000\n' +
+            '2. MongoDB is connected\n' +
+            '3. You are logged in'
+        } else if (err.message.includes('Authentication required')) {
+          errorMessage = 'Please login to view equipment'
+        }
+        
+        setError(errorMessage)
         console.error('Error fetching equipment:', err)
       } finally {
         setLoading(false)
@@ -58,7 +71,20 @@ export const useRequests = () => {
           setError(response.message || 'Failed to fetch requests')
         }
       } catch (err) {
-        setError(err.message || 'Failed to fetch requests')
+        // Provide more helpful error messages
+        let errorMessage = err.message || 'Failed to fetch requests'
+        
+        // Check if it's a network error (backend not running)
+        if (err.name === 'NetworkError' || err.message.includes('Failed to connect')) {
+          errorMessage = 'Cannot connect to backend server. Please ensure:\n' +
+            '1. Backend is running on port 4000\n' +
+            '2. MongoDB is connected\n' +
+            '3. You are logged in'
+        } else if (err.message.includes('Authentication required')) {
+          errorMessage = 'Please login to view requests'
+        }
+        
+        setError(errorMessage)
         console.error('Error fetching requests:', err)
       } finally {
         setLoading(false)
@@ -98,7 +124,20 @@ export const useTeams = () => {
           setError(response.message || 'Failed to fetch teams')
         }
       } catch (err) {
-        setError(err.message || 'Failed to fetch teams')
+        // Provide more helpful error messages
+        let errorMessage = err.message || 'Failed to fetch teams'
+        
+        // Check if it's a network error (backend not running)
+        if (err.name === 'NetworkError' || err.message.includes('Failed to connect')) {
+          errorMessage = 'Cannot connect to backend server. Please ensure:\n' +
+            '1. Backend is running on port 4000\n' +
+            '2. MongoDB is connected\n' +
+            '3. You are logged in'
+        } else if (err.message.includes('Authentication required')) {
+          errorMessage = 'Please login to view teams'
+        }
+        
+        setError(errorMessage)
         console.error('Error fetching teams:', err)
       } finally {
         setLoading(false)

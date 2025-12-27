@@ -30,11 +30,23 @@ const Dashboard = () => {
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <p className="text-red-600 dark:text-red-400">Error: {error}</p>
-        <p className="text-sm text-red-500 dark:text-red-500 mt-2">
-          Please make sure the backend server is running on port 4000 and you are authenticated.
-        </p>
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-red-800 dark:text-red-300 font-semibold mb-2">Connection Error</h3>
+            <p className="text-red-700 dark:text-red-400 whitespace-pre-line">{error}</p>
+            <div className="mt-4 space-y-2 text-sm text-red-600 dark:text-red-500">
+              <p className="font-medium">Troubleshooting steps:</p>
+              <ol className="list-decimal list-inside space-y-1 ml-2">
+                <li>Start the backend server: <code className="bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">cd GearGuard/backend && npm run server</code></li>
+                <li>Ensure MongoDB is running and connected</li>
+                <li>Check that the backend is listening on port 4000</li>
+                <li>Make sure you are logged in (authentication required)</li>
+              </ol>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
