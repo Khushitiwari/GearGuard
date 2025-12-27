@@ -1,22 +1,43 @@
 import { motion } from 'framer-motion'
-import { TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
-import { mockRequests, mockEquipment } from '../data/mockData'
+import { TrendingUp, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react'
+import { useRequests } from '../hooks/useData'
 import { format } from 'date-fns'
 
 const Dashboard = () => {
-  // Calculate stats from mock data
+  const { requests, loading, error } = useRequests()
+
+  // Calculate stats from API data
   const stats = {
-    totalRequests: mockRequests.length,
-    inProgress: mockRequests.filter(r => r.status === 'In Progress').length,
-    completed: mockRequests.filter(r => r.status === 'Repaired').length,
-    overdue: mockRequests.filter(r => {
+    totalRequests: requests.length,
+    inProgress: requests.filter(r => r.status === 'In Progress').length,
+    completed: requests.filter(r => r.status === 'Repaired').length,
+    overdue: requests.filter(r => {
       const scheduled = new Date(r.scheduledAt)
       const now = new Date()
       return scheduled < now && r.status !== 'Repaired' && r.status !== 'Scraped'
     }).length,
   }
 
-  const recentRequests = mockRequests.slice(0, 5)
+  const recentRequests = requests.slice(0, 5)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p className="text-red-600 dark:text-red-400">Error: {error}</p>
+        <p className="text-sm text-red-500 dark:text-red-500 mt-2">
+          Please make sure the backend server is running on port 4000 and you are authenticated.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

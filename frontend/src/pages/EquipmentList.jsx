@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Filter, Plus, Wrench, MapPin, Calendar, Users, X } from 'lucide-react'
-import { mockEquipment, getTeamById, getUserById, mockTeams, mockUsers } from '../data/mockData'
+import { Search, Filter, Plus, Wrench, MapPin, Calendar, Users, X, Loader2 } from 'lucide-react'
+import { useEquipment, useTeams } from '../hooks/useData'
 import { format } from 'date-fns'
 
 const EquipmentList = () => {
@@ -11,9 +11,17 @@ const EquipmentList = () => {
   const [filterWarrantyStatus, setFilterWarrantyStatus] = useState('All')
   const [filterOwner, setFilterOwner] = useState('All')
 
-  const categories = ['All', ...new Set(mockEquipment.map(eq => eq.category))]
-  const teams = ['All', ...mockTeams.map(team => team.id)]
-  const owners = ['All', ...new Set(mockEquipment.map(eq => eq.owner))]
+  const { equipment, loading: equipmentLoading, error: equipmentError } = useEquipment()
+  const { teams, loading: teamsLoading } = useTeams()
+
+  const categories = ['All', ...new Set(equipment.map(eq => eq.category))]
+  const teamsList = ['All', ...teams.map(team => team._id || team.id)]
+  const owners = ['All', ...new Set(equipment.map(eq => {
+    if (typeof eq.owner === 'object' && eq.owner?._id) {
+      return eq.owner._id
+    }
+    return eq.owner
+  }))]
   const warrantyStatuses = ['All', 'Valid', 'Expiring Soon', 'Expired']
 
   const getWarrantyStatus = (equipment) => {
@@ -26,19 +34,40 @@ const EquipmentList = () => {
     return 'Valid'
   }
 
-  const filteredEquipment = mockEquipment.filter((eq) => {
+  const filteredEquipment = equipment.filter((eq) => {
     const matchesSearch =
-      eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      eq.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      eq.location.toLowerCase().includes(searchTerm.toLowerCase())
+      eq.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      eq.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      eq.location?.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesCategory = filterCategory === 'All' || eq.category === filterCategory
-    const matchesTeam = filterTeam === 'All' || eq.assignedTo === filterTeam
+    const assignedToId = typeof eq.assignedTo === 'object' ? eq.assignedTo?._id || eq.assignedTo?.id : eq.assignedTo
+    const matchesTeam = filterTeam === 'All' || assignedToId === filterTeam
     const matchesWarranty = filterWarrantyStatus === 'All' || getWarrantyStatus(eq) === filterWarrantyStatus
-    const matchesOwner = filterOwner === 'All' || eq.owner === filterOwner
+    const ownerId = typeof eq.owner === 'object' ? eq.owner?._id || eq.owner?.id : eq.owner
+    const matchesOwner = filterOwner === 'All' || ownerId === filterOwner
     
     return matchesSearch && matchesCategory && matchesTeam && matchesWarranty && matchesOwner
   })
+
+  if (equipmentLoading || teamsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
+  if (equipmentError) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p className="text-red-600 dark:text-red-400">Error: {equipmentError}</p>
+        <p className="text-sm text-red-500 dark:text-red-500 mt-2">
+          Please make sure the backend server is running on port 4000 and you are authenticated.
+        </p>
+      </div>
+    )
+  }
 
   const hasActiveFilters = filterCategory !== 'All' || filterTeam !== 'All' || filterWarrantyStatus !== 'All' || filterOwner !== 'All'
 
@@ -106,8 +135,8 @@ const EquipmentList = () => {
                 className="w-full pl-10 pr-8 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none cursor-pointer"
               >
                 <option value="All">All Teams</option>
-                {teams.filter(team => team !== 'All').map((teamId) => {
-                  const team = getTeamById(teamId)
+                {teamsList.filter(team => team !== 'All').map((teamId) => {
+                  const team = teams.find(t => (t._id || t.id) === teamId)
                   return (
                     <option key={teamId} value={teamId}>
                       {team?.teamName || 'Unknown'}
@@ -143,10 +172,14 @@ const EquipmentList = () => {
               >
                 <option value="All">All Owners</option>
                 {owners.filter(owner => owner !== 'All').map((ownerId) => {
-                  const owner = getUserById(ownerId)
+                  const owner = equipment.find(eq => {
+                    const eqOwnerId = typeof eq.owner === 'object' ? eq.owner?._id || eq.owner?.id : eq.owner
+                    return eqOwnerId === ownerId
+                  })?.owner
+                  const ownerName = typeof owner === 'object' ? owner?.name : 'Unknown'
                   return (
                     <option key={ownerId} value={ownerId}>
-                      {owner?.name || 'Unknown'}
+                      {ownerName || 'Unknown'}
                     </option>
                   )
                 })}
@@ -209,14 +242,15 @@ const EquipmentList = () => {
   )
 }
 
-const EquipmentRow = ({ equipment, index }) => {
-  const team = getTeamById(equipment.assignedTo)
-  const owner = getUserById(equipment.owner)
+const EquipmentRow = ({ equipment: eq, index }) => {
+  const assignedToId = typeof eq.assignedTo === 'object' ? eq.assignedTo?._id || eq.assignedTo?.id : eq.assignedTo
+  const team = typeof eq.assignedTo === 'object' ? eq.assignedTo : null
+  const owner = typeof eq.owner === 'object' ? eq.owner : null
 
-  const isWarrantyExpired = new Date(equipment.warrantyExpiry) < new Date()
+  const isWarrantyExpired = new Date(eq.warrantyExpiry) < new Date()
   const isWarrantyExpiringSoon =
-    new Date(equipment.warrantyExpiry) > new Date() &&
-    new Date(equipment.warrantyExpiry) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+    new Date(eq.warrantyExpiry) > new Date() &&
+    new Date(eq.warrantyExpiry) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
 
   return (
     <motion.tr
@@ -231,25 +265,25 @@ const EquipmentRow = ({ equipment, index }) => {
             <Wrench className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="font-medium text-gray-900 dark:text-gray-100">{equipment.name}</div>
+            <div className="font-medium text-gray-900 dark:text-gray-100">{eq.name}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Owner: {owner?.name || 'Unknown'}</div>
           </div>
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-medium">
-          {equipment.category}
+          {eq.category}
         </span>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
           <MapPin className="w-4 h-4" />
-          {equipment.location}
+          {eq.location}
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <code className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-          {equipment.serialNumber}
+          {eq.serialNumber}
         </code>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
@@ -257,7 +291,7 @@ const EquipmentRow = ({ equipment, index }) => {
           <Calendar className="w-4 h-4 text-gray-400 dark:text-gray-500" />
           <div>
             <div className="text-sm text-gray-900 dark:text-gray-100">
-              {format(new Date(equipment.warrantyExpiry), 'MMM dd, yyyy')}
+              {format(new Date(eq.warrantyExpiry), 'MMM dd, yyyy')}
             </div>
             {isWarrantyExpired && (
               <div className="text-xs text-red-600 dark:text-red-400 font-medium">Expired</div>
@@ -272,7 +306,7 @@ const EquipmentRow = ({ equipment, index }) => {
         {team ? (
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-            <span className="text-sm text-gray-600 dark:text-gray-300">{team.teamName}</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">{team.teamName || 'Unknown'}</span>
           </div>
         ) : (
           <span className="text-sm text-gray-400 dark:text-gray-500">Unassigned</span>

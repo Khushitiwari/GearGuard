@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Clock, User, AlertCircle, Wrench } from 'lucide-react'
-import { mockRequests, getEquipmentById, getUserById } from '../data/mockData'
+import { Clock, User, AlertCircle, Wrench, Loader2 } from 'lucide-react'
+import { useRequests } from '../hooks/useData'
+import { requestAPI } from '../services/api'
 import { format, isPast, isToday } from 'date-fns'
 import {
   DndContext,
@@ -23,8 +24,15 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 const KanbanBoard = () => {
-  const [requests, setRequests] = useState(mockRequests)
+  const { requests: initialRequests, loading } = useRequests()
+  const [requests, setRequests] = useState([])
   const [activeId, setActiveId] = useState(null)
+
+  useEffect(() => {
+    if (initialRequests) {
+      setRequests(initialRequests)
+    }
+  }, [initialRequests])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -46,6 +54,14 @@ const KanbanBoard = () => {
 
   const getRequestsByStatus = (status) => {
     return requests.filter((req) => req.status === status)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
   }
 
   const isOverdue = (scheduledAt, status) => {
@@ -78,10 +94,17 @@ const KanbanBoard = () => {
     if (overId.startsWith('empty-')) {
       const targetColumnId = overId.replace('empty-', '')
       if (validColumnIds.includes(targetColumnId) && activeRequest.status !== targetColumnId) {
+        const requestId = activeRequest._id || activeRequest.id
+        // Update in backend
+        requestAPI.update(requestId, { status: targetColumnId }).catch(err => {
+          console.error('Failed to update request:', err)
+        })
+        // Optimistically update UI
         setRequests((prevRequests) =>
-          prevRequests.map((req) =>
-            req.id === active.id ? { ...req, status: targetColumnId } : req
-          )
+          prevRequests.map((req) => {
+            const reqId = req._id || req.id
+            return reqId === requestId ? { ...req, status: targetColumnId } : req
+          })
         )
       }
       setActiveId(null)
@@ -93,10 +116,17 @@ const KanbanBoard = () => {
       // Dropped on a column - change status
       const newStatus = overId
       if (activeRequest.status !== newStatus) {
+        const requestId = activeRequest._id || activeRequest.id
+        // Update in backend
+        requestAPI.update(requestId, { status: newStatus }).catch(err => {
+          console.error('Failed to update request:', err)
+        })
+        // Optimistically update UI
         setRequests((prevRequests) =>
-          prevRequests.map((req) =>
-            req.id === active.id ? { ...req, status: newStatus } : req
-          )
+          prevRequests.map((req) => {
+            const reqId = req._id || req.id
+            return reqId === requestId ? { ...req, status: newStatus } : req
+          })
         )
       }
       setActiveId(null)
@@ -104,20 +134,36 @@ const KanbanBoard = () => {
     }
 
     // Dropped on another card
-    const overRequest = requests.find((req) => req.id === over.id)
+    const overRequest = requests.find((req) => {
+      const reqId = req._id || req.id
+      return reqId === over.id
+    })
     if (overRequest) {
       if (overRequest.status !== activeRequest.status) {
         // Move to the column of the card we dropped on
+        const requestId = activeRequest._id || activeRequest.id
+        // Update in backend
+        requestAPI.update(requestId, { status: overRequest.status }).catch(err => {
+          console.error('Failed to update request:', err)
+        })
+        // Optimistically update UI
         setRequests((prevRequests) =>
-          prevRequests.map((req) =>
-            req.id === active.id ? { ...req, status: overRequest.status } : req
-          )
+          prevRequests.map((req) => {
+            const reqId = req._id || req.id
+            return reqId === requestId ? { ...req, status: overRequest.status } : req
+          })
         )
       } else {
-        // Reorder within the same column
+        // Reorder within the same column (no backend update needed for reordering)
         const activeColumnRequests = getRequestsByStatus(activeRequest.status)
-        const oldIndex = activeColumnRequests.findIndex((req) => req.id === active.id)
-        const newIndex = activeColumnRequests.findIndex((req) => req.id === over.id)
+        const oldIndex = activeColumnRequests.findIndex((req) => {
+          const reqId = req._id || req.id
+          return reqId === active.id
+        })
+        const newIndex = activeColumnRequests.findIndex((req) => {
+          const reqId = req._id || req.id
+          return reqId === over.id
+        })
 
         if (oldIndex !== newIndex && newIndex !== -1) {
           const reorderedRequests = arrayMove(activeColumnRequests, oldIndex, newIndex)
@@ -138,7 +184,10 @@ const KanbanBoard = () => {
     setActiveId(null)
   }
 
-  const activeRequest = activeId ? requests.find((req) => req.id === activeId) : null
+  const activeRequest = activeId ? requests.find((req) => {
+    const reqId = req._id || req.id
+    return reqId === activeId
+  }) : null
 
   return (
     <div className="space-y-6">
@@ -195,7 +244,7 @@ const KanbanColumn = ({ column, requests, isOverdue, columnId }) => {
     gray: 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
   }
 
-  const requestIds = requests.map((req) => req.id)
+  const requestIds = requests.map((req) => req._id || req.id)
   const { setNodeRef: setColumnRef, isOver: isColumnOver } = useDroppable({
     id: columnId,
   })
@@ -239,6 +288,7 @@ const KanbanColumn = ({ column, requests, isOverdue, columnId }) => {
 }
 
 const SortableRequestCard = ({ request, isOverdue }) => {
+  const requestId = request._id || request.id
   const {
     attributes,
     listeners,
@@ -247,7 +297,7 @@ const SortableRequestCard = ({ request, isOverdue }) => {
     transition,
     isDragging,
   } = useSortable({
-    id: request.id,
+    id: requestId,
     data: {
       type: 'request',
       request,
@@ -268,9 +318,9 @@ const SortableRequestCard = ({ request, isOverdue }) => {
 }
 
 const RequestCard = ({ request, isOverdue, isDragging = false }) => {
-  const equipment = getEquipmentById(request.equipment)
-  const technician = getUserById(request.technician)
-  const requester = getUserById(request.createdFrom)
+  const equipment = typeof request.equipment === 'object' ? request.equipment : null
+  const technician = typeof request.technician === 'object' ? request.technician : null
+  const requester = typeof request.createdFrom === 'object' ? request.createdFrom : null
 
   const getInitials = (name) => {
     if (!name) return '??'

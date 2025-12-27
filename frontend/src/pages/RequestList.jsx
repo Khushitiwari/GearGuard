@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Filter, Plus, Clock, User, Wrench, AlertCircle, X } from 'lucide-react'
-import { mockRequests, getEquipmentById, getUserById, getTeamById } from '../data/mockData'
+import { Search, Filter, Plus, Clock, User, Wrench, AlertCircle, X, Loader2 } from 'lucide-react'
+import { useRequests } from '../hooks/useData'
 import { format, isPast, isToday } from 'date-fns'
 
 const RequestList = () => {
@@ -9,18 +9,39 @@ const RequestList = () => {
   const [filterStatus, setFilterStatus] = useState('All')
   const [filterPriority, setFilterPriority] = useState('All')
 
+  const { requests, loading, error } = useRequests()
+
   const statuses = ['All', 'New', 'In Progress', 'Repaired', 'Scraped']
   const priorities = ['All', 'Low', 'Medium', 'High']
 
-  const filteredRequests = mockRequests.filter((req) => {
-    const equipment = getEquipmentById(req.equipment)
+  const filteredRequests = requests.filter((req) => {
+    const equipment = typeof req.equipment === 'object' ? req.equipment : null
     const matchesSearch =
-      req.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      equipment?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      req.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      equipment?.name?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = filterStatus === 'All' || req.status === filterStatus
     const matchesPriority = filterPriority === 'All' || req.priority === filterPriority
     return matchesSearch && matchesStatus && matchesPriority
   })
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p className="text-red-600 dark:text-red-400">Error: {error}</p>
+        <p className="text-sm text-red-500 dark:text-red-500 mt-2">
+          Please make sure the backend server is running on port 4000 and you are authenticated.
+        </p>
+      </div>
+    )
+  }
 
   const hasActiveFilters = filterStatus !== 'All' || filterPriority !== 'All'
 
@@ -151,10 +172,10 @@ const RequestList = () => {
 }
 
 const RequestRow = ({ request, index }) => {
-  const equipment = getEquipmentById(request.equipment)
-  const technician = getUserById(request.technician)
-  const requester = getUserById(request.createdFrom)
-  const team = getTeamById(request.team)
+  const equipment = typeof request.equipment === 'object' ? request.equipment : null
+  const technician = typeof request.technician === 'object' ? request.technician : null
+  const requester = typeof request.createdFrom === 'object' ? request.createdFrom : null
+  const team = typeof request.team === 'object' ? request.team : null
 
   const isOverdue =
     isPast(new Date(request.scheduledAt)) &&
