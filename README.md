@@ -18,7 +18,7 @@ The frontend focuses on clean UI/UX, responsiveness, and scalability for real-wo
 ---
 ## 🎥 GearGuard Demo
 
-[![GearGuard Dashboard](public/assets/heroImg.png)](VIDEO_LINK_HERE)
+https://github.com/user-attachments/assets/96864801-e8d0-4644-9c3e-b71c29e9ecf2
 
 
 
