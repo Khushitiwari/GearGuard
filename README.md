@@ -16,6 +16,10 @@ GearGuard helps organizations:
 The frontend focuses on clean UI/UX, responsiveness, and scalability for real-world usage.
 
 ---
+## 🎥 Demo Video
+
+https://github.com/Khushitiwari/GearGuard/assets/12345678/demo.mp4
+
 
 ## ✨ Key Features
 
