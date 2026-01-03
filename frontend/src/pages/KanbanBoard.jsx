@@ -5,15 +5,28 @@ import { useRequests } from '../hooks/useData'
 import { requestAPI } from '../services/api'
 import { format, isPast, isToday } from 'date-fns'
 import {
+  // DndContext,
+  // closestCenter,
+  // KeyboardSensor,
+  // PointerSensor,
+  // useSensor,
+  // useSensors,
+  // DragOverlay,
+  // useDroppable,
+
+  
   DndContext,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragOverlay,
   useDroppable,
+  pointerWithin,
+
+
 } from '@dnd-kit/core'
+
 import {
   arrayMove,
   SortableContext,
@@ -73,112 +86,51 @@ const KanbanBoard = () => {
     setActiveId(event.active.id)
   }
 
-  const handleDragEnd = (event) => {
-    const { active, over } = event
+   const handleDragEnd = ({ active, over }) => {
+  setActiveId(null)
+  if (!over) return
 
-    if (!over) {
-      setActiveId(null)
-      return
-    }
+  const activeId = active.id
+  const overId = over.id
 
-    const activeRequest = requests.find((req) => req.id === active.id)
-    if (!activeRequest) {
-      setActiveId(null)
-      return
-    }
+  const activeItem = requests.find(
+    r => (r._id || r.id) === activeId
+  )
 
-    const validColumnIds = columns.map((col) => col.id)
-    const overId = over.id.toString()
+  if (!activeItem) return
 
-    // Check if dropped on empty column area (format: "empty-{columnId}")
-    if (overId.startsWith('empty-')) {
-      const targetColumnId = overId.replace('empty-', '')
-      if (validColumnIds.includes(targetColumnId) && activeRequest.status !== targetColumnId) {
-        const requestId = activeRequest._id || activeRequest.id
-        // Update in backend
-        requestAPI.update(requestId, { status: targetColumnId }).catch(err => {
-          console.error('Failed to update request:', err)
-        })
-        // Optimistically update UI
-        setRequests((prevRequests) =>
-          prevRequests.map((req) => {
-            const reqId = req._id || req.id
-            return reqId === requestId ? { ...req, status: targetColumnId } : req
-          })
-        )
-      }
-      setActiveId(null)
-      return
-    }
+  let newStatus = null
 
-    // Check if dropped directly on a column
-    if (validColumnIds.includes(overId)) {
-      // Dropped on a column - change status
-      const newStatus = overId
-      if (activeRequest.status !== newStatus) {
-        const requestId = activeRequest._id || activeRequest.id
-        // Update in backend
-        requestAPI.update(requestId, { status: newStatus }).catch(err => {
-          console.error('Failed to update request:', err)
-        })
-        // Optimistically update UI
-        setRequests((prevRequests) =>
-          prevRequests.map((req) => {
-            const reqId = req._id || req.id
-            return reqId === requestId ? { ...req, status: newStatus } : req
-          })
-        )
-      }
-      setActiveId(null)
-      return
-    }
-
-    // Dropped on another card
-    const overRequest = requests.find((req) => {
-      const reqId = req._id || req.id
-      return reqId === over.id
-    })
-    if (overRequest) {
-      if (overRequest.status !== activeRequest.status) {
-        // Move to the column of the card we dropped on
-        const requestId = activeRequest._id || activeRequest.id
-        // Update in backend
-        requestAPI.update(requestId, { status: overRequest.status }).catch(err => {
-          console.error('Failed to update request:', err)
-        })
-        // Optimistically update UI
-        setRequests((prevRequests) =>
-          prevRequests.map((req) => {
-            const reqId = req._id || req.id
-            return reqId === requestId ? { ...req, status: overRequest.status } : req
-          })
-        )
-      } else {
-        // Reorder within the same column (no backend update needed for reordering)
-        const activeColumnRequests = getRequestsByStatus(activeRequest.status)
-        const oldIndex = activeColumnRequests.findIndex((req) => {
-          const reqId = req._id || req.id
-          return reqId === active.id
-        })
-        const newIndex = activeColumnRequests.findIndex((req) => {
-          const reqId = req._id || req.id
-          return reqId === over.id
-        })
-
-        if (oldIndex !== newIndex && newIndex !== -1) {
-          const reorderedRequests = arrayMove(activeColumnRequests, oldIndex, newIndex)
-          setRequests((prevRequests) => {
-            const otherRequests = prevRequests.filter(
-              (req) => req.status !== activeRequest.status
-            )
-            return [...otherRequests, ...reorderedRequests]
-          })
-        }
-      }
-    }
-
-    setActiveId(null)
+  // Dropped on column
+  if (columns.some(col => col.id === overId)) {
+    newStatus = overId
   }
+
+  // Dropped on another card
+  const overItem = requests.find(
+    r => (r._id || r.id) === overId
+  )
+  if (overItem) {
+    newStatus = overItem.status
+  }
+
+  if (!newStatus || newStatus === activeItem.status) return
+
+  const requestId = activeItem._id || activeItem.id
+
+  // Backend update
+  requestAPI.update(requestId, { status: newStatus }).catch(console.error)
+
+  // UI update
+  setRequests(prev =>
+    prev.map(req =>
+      (req._id || req.id) === requestId
+        ? { ...req, status: newStatus }
+        : req
+    )
+  )
+}
+
 
   const handleDragCancel = () => {
     setActiveId(null)
@@ -202,10 +154,9 @@ const KanbanBoard = () => {
       {/* Kanban Columns */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
       >
         <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide">
           {columns.map((column) => {
@@ -245,49 +196,55 @@ const KanbanColumn = ({ column, requests, isOverdue, columnId }) => {
   }
 
   const requestIds = requests.map((req) => req._id || req.id)
-  const { setNodeRef: setColumnRef, isOver: isColumnOver } = useDroppable({
+  const { setNodeRef , isOver} = useDroppable({
     id: columnId,
   })
 
-  return (
-    <div className="flex-shrink-0 w-80" ref={setColumnRef}>
-      <div
-        className={`rounded-xl border-2 ${colorClasses[column.color]} ${
-          isColumnOver ? 'ring-2 ring-primary-500 ring-offset-2' : ''
-        } p-4 mb-4 transition-all`}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg">{column.label}</h2>
-          <span className="bg-white/60 dark:bg-gray-800/60 px-2 py-1 rounded-full text-sm font-medium">
-            {requests.length}
-          </span>
-        </div>
+ return (
+  <div className="flex-shrink-0 w-80">
+    {/* Column Header */}
+    <div
+      className={`rounded-xl border-2 ${colorClasses[column.color]} ${
+        isOver ? 'ring-2 ring-primary-500 ring-offset-2' : ''
+      } p-4 mb-4 transition-all`}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-lg">{column.label}</h2>
+        <span className="bg-white/60 dark:bg-gray-800/60 px-2 py-1 rounded-full text-sm font-medium">
+          {requests.length}
+        </span>
       </div>
+    </div>
 
+    {/* Column Body (DROPPABLE AREA) */}
+    <div
+      ref={setNodeRef}
+      className="space-y-4 min-h-[400px]"
+    >
       <SortableContext
-        id={columnId}
         items={requestIds}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-4 min-h-[400px]">
-          {requests.length === 0 ? (
-            <EmptyColumnState columnId={columnId} />
-          ) : (
-            requests.map((request) => (
-              <SortableRequestCard
-                key={request.id}
-                request={request}
-                isOverdue={isOverdue(request.scheduledAt, request.status)}
-              />
-            ))
-          )}
-        </div>
+        {requests.length === 0 ? (
+          <EmptyColumnState columnId={columnId} />
+        ) : (
+          requests.map((request) => (
+            <SortableRequestCard
+              key={request._id || request.id}
+              request={request}
+              columnId={columnId}
+              isOverdue={isOverdue(request.scheduledAt, request.status)}
+            />
+          ))
+        )}
       </SortableContext>
     </div>
-  )
+  </div>
+)
+
 }
 
-const SortableRequestCard = ({ request, isOverdue }) => {
+const SortableRequestCard = ({ request, isOverdue , columnId }) => {
   const requestId = request._id || request.id
   const {
     attributes,
@@ -301,6 +258,7 @@ const SortableRequestCard = ({ request, isOverdue }) => {
     data: {
       type: 'request',
       request,
+      columnId,
     },
   })
 
