@@ -55,23 +55,53 @@ const Dashboard = () => {
     <div className="space-y-6">
       {/* Hero Section with Spline placeholder */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-primary-500 to-primary-700 dark:from-primary-600 dark:to-primary-800 rounded-2xl p-8 text-white shadow-lg"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Welcome back!</h1>
-            <p className="text-primary-100 text-lg">
-              Track and manage your equipment maintenance efficiently
-            </p>
-          </div>
-          {/* TODO: Add Spline 3D element here for visual enhancement */}
-          <div className="hidden lg:block w-32 h-32 bg-white/10 rounded-full flex items-center justify-center">
-            <TrendingUp className="w-16 h-16 text-white/80" />
-          </div>
-        </div>
-      </motion.div>
+  initial={{ opacity: 0, y: 30 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.6, ease: 'easeOut' }}
+  className="relative overflow-hidden rounded-2xl p-8 md:p-10
+             bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700
+             dark:from-primary-600 dark:via-primary-700 dark:to-primary-800
+             text-white shadow-xl"
+>
+  {/* Decorative blur blobs */}
+  <div className="absolute -top-16 -right-16 w-56 h-56 bg-white/10 rounded-full blur-3xl" />
+  <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-black/10 rounded-full blur-3xl" />
+
+  <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+    {/* Left Content */}
+    <div className="max-w-xl">
+      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">
+        Welcome back!
+      </h1>
+
+      <p className="text-primary-100 text-base md:text-lg leading-relaxed">
+        Here’s a quick overview of what’s happening with your equipment
+        maintenance today.
+      </p>
+
+      {/* Quick highlight */}
+      <div className="mt-5 inline-flex items-center gap-3 bg-white/10 backdrop-blur-md
+                      border border-white/20 rounded-xl px-4 py-2">
+        <TrendingUp className="w-5 h-5 text-white/80" />
+        <span className="text-sm text-white/90">
+          Stay on top of repairs and avoid overdue tasks
+        </span>
+      </div>
+    </div>
+
+    {/* Right Visual / Placeholder */}
+    <div className="hidden lg:flex items-center justify-center w-44 h-44
+                rounded-2xl bg-white/10 backdrop-blur-md
+                border border-white/20">
+  <img
+    src="/public/assets/heroImg.png"
+    alt="Hero Illustration"
+    className="w-full h-full object-contain p-4"
+  />
+</div>
+
+  </div>
+</motion.div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
