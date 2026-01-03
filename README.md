@@ -18,7 +18,7 @@ The frontend focuses on clean UI/UX, responsiveness, and scalability for real-wo
 ---
 ## 🎥 Demo Video
 
-https://github.com/Khushitiwari/GearGuard/assets/12345678/demo.mp4
+https://github.com/Khushitiwari/frontend/public/assets/GearGuard Video - Made with Clipchamp.mp4
 
 
 ## ✨ Key Features
